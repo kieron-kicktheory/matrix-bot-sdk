@@ -172,7 +172,7 @@ describe('Appservice', () => {
         });
     });
 
-    describe.only('alias namespace', () => {
+    describe('alias namespace', () => {
         it('should allow multiple registered user namespaces but fail suffix functions', async () => {
             const appservice = new Appservice({
                 port: 0,
@@ -707,7 +707,7 @@ describe('Appservice', () => {
 
             const aliasA = "#_prefix_test:example.org";
             const aliasB = "#alice_prefix_:example.org";
-            const aliasC = "#alice_prefix2_:example.org";
+            const aliasC = "#_prefix2_:example.org";
 
             expect(appservice.isNamespacedAlias(aliasA)).toBeTruthy();
             expect(appservice.isNamespacedAlias(aliasB)).toBeFalsy();
@@ -1857,7 +1857,8 @@ describe('Appservice', () => {
         }
     });
 
-    it('should refresh membership information of intents when actions are performed against them', async () => {
+    // This differs from the upstream SDK as we do NOT cache the rooms the users are in.
+    it('should NOT refresh membership information of intents when actions are performed against them', async () => {
         const port = await getPort();
         const hsToken = "s3cret_token";
         const appservice = new Appservice({
@@ -1886,11 +1887,11 @@ describe('Appservice', () => {
         try {
             const intent = appservice.getIntentForSuffix("test");
             const refreshSpy = simple.stub().callFn(() => Promise.resolve([]));
-            intent.refreshJoinedRooms = refreshSpy;
+            intent.getJoinedRooms = refreshSpy;
 
             // polyfill the dummy user too
             const intent2 = appservice.getIntentForSuffix("test___WRONGUSER");
-            intent2.refreshJoinedRooms = () => Promise.resolve([]);
+            intent2.getJoinedRooms = () => Promise.resolve([]);
 
             const joinTxn = {
                 events: [
@@ -1938,8 +1939,7 @@ describe('Appservice', () => {
                 });
                 expect(res).toMatchObject({});
 
-                expect(refreshSpy.callCount).toBe(1);
-                refreshSpy.callCount = 0;
+                expect(refreshSpy.callCount).toBe(0);
             }
 
             await doCall("/transactions/1", { json: joinTxn });
