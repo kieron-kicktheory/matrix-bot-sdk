@@ -259,7 +259,7 @@ export class Appservice extends EventEmitter {
     private pendingTransactions = new Map<string, Promise<void>>();
 
     /**
-     * Client instance that is not crypto-aware and can be used to call AS-API requests.
+     * Appservice specific APIs.
      */
     public readonly apis: AppserviceApis;
 
