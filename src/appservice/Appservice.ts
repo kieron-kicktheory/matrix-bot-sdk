@@ -26,6 +26,7 @@ import {
 } from "..";
 import { MatrixBridge } from "./MatrixBridge";
 import { IApplicationServiceProtocol } from "./http_responses";
+import { AppserviceApis, PingHomeserverResponse } from "../AppserviceApis";
 
 const EDU_ANNOTATION_KEY = "io.t2bot.sdk.bot.type";
 
@@ -258,6 +259,11 @@ export class Appservice extends EventEmitter {
     private pendingTransactions = new Map<string, Promise<void>>();
 
     /**
+     * Client instance that is not crypto-aware and can be used to call AS-API requests.
+     */
+    public readonly apis: AppserviceApis;
+
+    /**
      * A cache of intents for the purposes of decrypting rooms
      */
     private cryptoClientForRoomId: LRU.LRUCache<string, MatrixClient>;
@@ -347,6 +353,7 @@ export class Appservice extends EventEmitter {
         // Only register a prefix if we register one namespace.
         this.userPrefix = options.userPrefix !== undefined ? options.userPrefix : getPrefix(this.registration.namespaces.users);
         this.aliasPrefix = options.aliasPrefix !== undefined ? options.aliasPrefix : getPrefix(this.registration.namespaces.aliases);
+        this.apis = new AppserviceApis(new MatrixClient(options.homeserverUrl, this.registration.as_token), this.registration.id);
     }
 
     /**
@@ -629,12 +636,13 @@ export class Appservice extends EventEmitter {
         });
     }
 
-    public async pingHomeserver() {
-        if (!this.registration.id) {
-            throw Error('No `id` given in registration information. Cannot ping homeserver');
-        }
-        this.pingRequest = randomUUID();
-        return this.botClient.doRequest("POST", `/_matrix/client/v1/appservice/${this.registration.id}/ping`, undefined, { transaction_id: this.pingRequest });
+    /**
+     * Ping the homeserver to check for connectivity and await the response.
+     * @returns Resolves if the ping succeded, otherwise rejects.
+     */
+    public async pingHomeserver(): Promise<PingHomeserverResponse> {
+        this.pingRequest = `matrix-bot-sdk_${randomUUID()}`;
+        return this.apis.pingHomeserver(this.pingRequest);
     }
 
     private async processEphemeralEvent(event: any): Promise<any> {
