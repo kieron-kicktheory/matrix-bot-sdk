@@ -20,7 +20,7 @@ export class AppserviceApis {
      * to ensure that the homeserver can communicate with the application service.
      * @param transactionId A unique ID that identifies the ping request.
      */
-    public pingHomeserver(transactionId?: string): Promise<PingHomeserverResponse> {
+    public pingHomeserver(transactionId: string): Promise<PingHomeserverResponse> {
         if (!this.appserviceId) {
             throw Error('No `id` given in registration information. Cannot ping homeserver');
         }
