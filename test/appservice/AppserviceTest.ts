@@ -22,6 +22,7 @@ async function beginAppserviceWithProtocols(protocols: string[]) {
                 rooms: [],
                 aliases: [],
             },
+            url: null,
             protocols,
         },
     });
@@ -44,9 +45,226 @@ async function beginAppserviceWithProtocols(protocols: string[]) {
 }
 
 describe('Appservice', () => {
-    it('should throw when there are no registered namespaces', async () => {
-        try {
-            new Appservice({
+    it('should NOT throw when there are no registered namespaces', async () => {
+        new Appservice({
+            port: 0,
+            bindAddress: '',
+            homeserverName: 'localhost',
+            homeserverUrl: 'https://localhost',
+            registration: {
+                as_token: "",
+                hs_token: "",
+                sender_localpart: "",
+                namespaces: {
+                },
+                url: null,
+            },
+        });
+    });
+
+    describe('user namespace', () => {
+        it('should allow multiple registered user namespaces but fail suffix functions', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        users: [
+                            { exclusive: true, regex: "@abc_.+:.+" },
+                            { exclusive: true, regex: "@def_.+:.+" },
+                        ],
+                    },
+                    url: null,
+                },
+            });
+            expect(() => appservice.getUserIdForSuffix("test")).toThrow('Cannot use getUserIdForSuffix, provided user namespace did not contain exactly one valid namespace');
+            expect(() => appservice.getIntentForSuffix("test")).toThrow('Cannot use getUserIdForSuffix, provided user namespace did not contain exactly one valid namespace');
+            expect(() => appservice.getSuffixForUserId("test")).toThrow('Cannot use getSuffixForUserId, provided user namespace did not contain exactly one valid namespace');
+        });
+
+        it('should allow multiple registered user namespaces if prefix provided', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                userPrefix: "@botusers_",
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        users: [
+                            { exclusive: true, regex: "@botusers_.+:.+" },
+                            { exclusive: true, regex: "@unrelated_.+:.+" },
+                        ],
+                    },
+                    url: null,
+                },
+            });
+            expect(appservice.getUserIdForSuffix("test")).toEqual('@botusers_test:localhost');
+            expect(appservice.getIntentForSuffix("test")).toHaveProperty('userId', '@botusers_test:localhost');
+            expect(appservice.getSuffixForUserId("@botusers_test:localhost")).toEqual('test');
+        });
+
+        it('should accept a ".+" prefix in the user namespace', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        users: [{ exclusive: true, regex: "@prefix_.+:localhost" }],
+                    },
+                    url: null,
+                },
+            });
+            expect(appservice.getUserIdForSuffix('foo')).toEqual("@prefix_foo:localhost");
+        });
+
+        it('should accept a ".*" prefix in the user namespace', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        users: [{ exclusive: true, regex: "@prefix_.*:localhost" }],
+                    },
+                    url: null,
+                },
+            });
+            expect(appservice.getUserIdForSuffix('foo')).toEqual("@prefix_foo:localhost");
+        });
+
+        it('should allow disabling the user suffix check', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        users: [{ exclusive: true, regex: "@prefix_foo:localhost" }],
+                    },
+                    url: null,
+                },
+            });
+            expect(() => appservice.getUserIdForSuffix('foo')).toThrow("Cannot use getUserIdForSuffix, provided user namespace did not contain exactly one valid namespace");
+            expect(() => appservice.getSuffixForUserId('foo')).toThrow("Cannot use getSuffixForUserId, provided user namespace did not contain exactly one valid namespace");
+            expect(appservice.isNamespacedUser('@prefix_foo:localhost')).toEqual(true);
+        });
+    });
+
+    describe.only('alias namespace', () => {
+        it('should allow multiple registered user namespaces but fail suffix functions', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        aliases: [
+                            { exclusive: true, regex: "#foo_.+:.+" },
+                            { exclusive: true, regex: "#bar_.+:.+" },
+                        ],
+                    },
+                    url: null,
+                },
+            });
+            expect(() => appservice.getAliasForSuffix("test")).toThrow(
+                'Cannot use getAliasForSuffix, provided alias namespace did not contain exactly one valid namespace');
+            expect(() => appservice.getAliasLocalpartForSuffix("test")).toThrow(
+                'Cannot use getAliasLocalpartForSuffix, provided user namespace did not contain exactly one valid namespace');
+            expect(() => appservice.getSuffixForAlias("test")).toThrow(
+                'Cannot use getSuffixForUserId, provided user namespace did not contain exactly one valid namespace');
+        });
+
+        it('should allow multiple registered user namespaces if prefix provided', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                aliasPrefix: "#myrooms_",
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        aliases: [
+                            { exclusive: true, regex: "#myrooms_.+:.+" },
+                            { exclusive: true, regex: "#unrelated_.+:.+" },
+                        ],
+                    },
+                    url: null,
+                },
+            });
+            expect(appservice.getAliasForSuffix("test")).toEqual('#myrooms_test:localhost');
+            expect(appservice.getAliasLocalpartForSuffix("test")).toEqual("myrooms_test");
+            expect(appservice.getSuffixForAlias("#myrooms_test:localhost")).toEqual("test");
+        });
+
+        it('should accept a ".+" prefix in the alias namespace', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        aliases: [{ exclusive: true, regex: "#prefix_.+:localhost" }],
+                    },
+                    url: null,
+                },
+            });
+            expect(appservice.getAliasForSuffix('foo')).toEqual("#prefix_foo:localhost");
+        });
+
+        it('should accept a ".*" prefix in the alias namespace', async () => {
+            const appservice = new Appservice({
+                port: 0,
+                bindAddress: '',
+                homeserverName: 'localhost',
+                homeserverUrl: 'https://localhost',
+                registration: {
+                    as_token: "",
+                    hs_token: "",
+                    sender_localpart: "",
+                    namespaces: {
+                        aliases: [{ exclusive: true, regex: "#prefix_.*:localhost" }],
+                    },
+                    url: null,
+                },
+            });
+            expect(appservice.getAliasForSuffix('foo')).toEqual("#prefix_foo:localhost");
+        });
+
+        it('should allow disabling the alias suffix check', async () => {
+            const appservice = new Appservice({
                 port: 0,
                 bindAddress: '',
                 homeserverName: 'localhost',
@@ -60,19 +278,19 @@ describe('Appservice', () => {
                         rooms: [],
                         aliases: [],
                     },
+                    url: null,
                 },
             });
+            expect(() => appservice.getAliasForSuffix("test")).toThrow(
+                'Cannot use getAliasForSuffix, provided alias namespace did not contain exactly one valid namespace');
+            expect(() => appservice.getAliasLocalpartForSuffix("test")).toThrow(
+                'Cannot use getAliasLocalpartForSuffix, provided user namespace did not contain exactly one valid namespace');
+            expect(() => appservice.getSuffixForAlias("test")).toThrow(
+                'Cannot use getSuffixForUserId, provided user namespace did not contain exactly one valid namespace');
+        });
 
-            // noinspection ExceptionCaughtLocallyJS
-            throw new Error("Did not throw when expecting it");
-        } catch (e) {
-            expect(e.message).toEqual("No user namespaces in registration");
-        }
-    });
-
-    it('should throw when there are too many registered namespaces', async () => {
-        try {
-            new Appservice({
+        it('should accept a ".*" prefix namespace', async () => {
+            const appservice = new Appservice({
                 port: 0,
                 bindAddress: '',
                 homeserverName: 'localhost',
@@ -82,83 +300,15 @@ describe('Appservice', () => {
                     hs_token: "",
                     sender_localpart: "",
                     namespaces: {
-                        users: [
-                            { exclusive: true, regex: "@.+:.+" },
-                            { exclusive: true, regex: "@.+:.+" },
-                        ],
+                        users: [{ exclusive: true, regex: "@prefix_.*:localhost" }],
                         rooms: [],
                         aliases: [],
                     },
+                    url: null,
                 },
             });
-
-            // noinspection ExceptionCaughtLocallyJS
-            throw new Error("Did not throw when expecting it");
-        } catch (e) {
-            expect(e.message).toEqual("Too many user namespaces registered: expecting exactly one");
-        }
-    });
-
-    it('should accept a ".+" prefix namespace', async () => {
-        const appservice = new Appservice({
-            port: 0,
-            bindAddress: '',
-            homeserverName: 'localhost',
-            homeserverUrl: 'https://localhost',
-            registration: {
-                as_token: "",
-                hs_token: "",
-                sender_localpart: "",
-                namespaces: {
-                    users: [{ exclusive: true, regex: "@prefix_.+:localhost" }],
-                    rooms: [],
-                    aliases: [],
-                },
-            },
+            expect(appservice.getUserIdForSuffix('foo')).toEqual("@prefix_foo:localhost");
         });
-        expect(appservice.getUserIdForSuffix('foo')).toEqual("@prefix_foo:localhost");
-    });
-
-    it('should accept a ".*" prefix namespace', async () => {
-        const appservice = new Appservice({
-            port: 0,
-            bindAddress: '',
-            homeserverName: 'localhost',
-            homeserverUrl: 'https://localhost',
-            registration: {
-                as_token: "",
-                hs_token: "",
-                sender_localpart: "",
-                namespaces: {
-                    users: [{ exclusive: true, regex: "@prefix_.*:localhost" }],
-                    rooms: [],
-                    aliases: [],
-                },
-            },
-        });
-        expect(appservice.getUserIdForSuffix('foo')).toEqual("@prefix_foo:localhost");
-    });
-
-    it('should allow disabling the suffix check', async () => {
-        const appservice = new Appservice({
-            port: 0,
-            bindAddress: '',
-            homeserverName: 'localhost',
-            homeserverUrl: 'https://localhost',
-            registration: {
-                as_token: "",
-                hs_token: "",
-                sender_localpart: "",
-                namespaces: {
-                    users: [{ exclusive: true, regex: "@prefix_foo:localhost" }],
-                    rooms: [],
-                    aliases: [],
-                },
-            },
-        });
-        expect(() => appservice.getUserIdForSuffix('foo')).toThrowError("Cannot use getUserIdForSuffix, provided namespace did not include a valid suffix");
-        expect(() => appservice.getSuffixForUserId('foo')).toThrowError("Cannot use getUserIdForSuffix, provided namespace did not include a valid suffix");
-        expect(appservice.isNamespacedUser('@prefix_foo:localhost')).toEqual(true);
     });
 
     it('should return the right bot user ID', async () => {
@@ -176,6 +326,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -197,6 +348,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -219,6 +371,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -241,6 +394,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -264,6 +418,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -286,6 +441,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -312,6 +468,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -335,6 +492,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -358,6 +516,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -400,6 +559,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -441,6 +601,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -462,6 +623,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
@@ -484,6 +646,7 @@ describe('Appservice', () => {
                         rooms: [],
                         aliases: [],
                     },
+                    url: null,
                 },
             });
 
@@ -508,6 +671,7 @@ describe('Appservice', () => {
                         rooms: [],
                         aliases: [],
                     },
+                    url: null,
                 },
             });
 
@@ -522,36 +686,6 @@ describe('Appservice', () => {
     });
 
     describe('isNamespacedAlias', () => {
-        it('should throw on no alias prefix set', async () => {
-            try {
-                const appservice = new Appservice({
-                    port: 0,
-                    bindAddress: '',
-                    homeserverName: 'example.org',
-                    homeserverUrl: 'https://localhost',
-                    registration: {
-                        as_token: "",
-                        hs_token: "",
-                        sender_localpart: "_bot_",
-                        namespaces: {
-                            users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                            rooms: [],
-                            aliases: [],
-                        },
-                    },
-                });
-
-                const userA = "#_prefix_test:example.org";
-                const userB = "#alice_prefix_:example.org";
-
-                expect(appservice.isNamespacedAlias(userA)).toBeTruthy();
-                expect(appservice.isNamespacedAlias(userB)).toBeFalsy();
-                throw new Error("Did not throw when expecting it");
-            } catch (e) {
-                expect(e.message).toEqual("Invalid configured alias prefix");
-            }
-        });
-
         it('should be able to tell if a given alias is the prefix namespace', async () => {
             const appservice = new Appservice({
                 port: 0,
@@ -563,18 +697,21 @@ describe('Appservice', () => {
                     hs_token: "",
                     sender_localpart: "_bot_",
                     namespaces: {
-                        users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
+                        users: [],
                         rooms: [],
-                        aliases: [{ exclusive: true, regex: "#_prefix_.*:.+" }],
+                        aliases: [{ exclusive: true, regex: "#_prefix_.*:.+" }, { exclusive: true, regex: "#_prefix2_.*:.+" }],
                     },
+                    url: null,
                 },
             });
 
-            const userA = "#_prefix_test:example.org";
-            const userB = "#alice_prefix_:example.org";
+            const aliasA = "#_prefix_test:example.org";
+            const aliasB = "#alice_prefix_:example.org";
+            const aliasC = "#alice_prefix2_:example.org";
 
-            expect(appservice.isNamespacedAlias(userA)).toBeTruthy();
-            expect(appservice.isNamespacedAlias(userB)).toBeFalsy();
+            expect(appservice.isNamespacedAlias(aliasA)).toBeTruthy();
+            expect(appservice.isNamespacedAlias(aliasB)).toBeFalsy();
+            expect(appservice.isNamespacedAlias(aliasC)).toBeTruthy();
         });
     });
 
@@ -593,190 +730,11 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
 
         expect(appservice.getAlias("_prefix_testing")).toEqual("#_prefix_testing:example.org");
-    });
-
-    describe('getAliasForSuffix', () => {
-        it('should throw on no alias prefix set', async () => {
-            try {
-                const appservice = new Appservice({
-                    port: 0,
-                    bindAddress: '',
-                    homeserverName: 'example.org',
-                    homeserverUrl: 'https://localhost',
-                    registration: {
-                        as_token: "",
-                        hs_token: "",
-                        sender_localpart: "_bot_",
-                        namespaces: {
-                            users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                            rooms: [],
-                            aliases: [],
-                        },
-                    },
-                });
-
-                expect(appservice.getAliasForSuffix("testing")).toEqual("#_prefix_testing:example.org");
-                throw new Error("Did not throw when expecting it");
-            } catch (e) {
-                expect(e.message).toEqual("Invalid configured alias prefix");
-            }
-        });
-
-        it('should return an alias for any namespaced suffix', async () => {
-            const appservice = new Appservice({
-                port: 0,
-                bindAddress: '',
-                homeserverName: 'example.org',
-                homeserverUrl: 'https://localhost',
-                registration: {
-                    as_token: "",
-                    hs_token: "",
-                    sender_localpart: "_bot_",
-                    namespaces: {
-                        users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                        rooms: [],
-                        aliases: [{ exclusive: true, regex: "#_prefix_.*:.+" }],
-                    },
-                },
-            });
-
-            expect(appservice.getAliasForSuffix("testing")).toEqual("#_prefix_testing:example.org");
-        });
-    });
-
-    describe('getAliasLocalpartForSuffix', () => {
-        it('should throw on no alias prefix set', async () => {
-            try {
-                const appservice = new Appservice({
-                    port: 0,
-                    bindAddress: '',
-                    homeserverName: 'example.org',
-                    homeserverUrl: 'https://localhost',
-                    registration: {
-                        as_token: "",
-                        hs_token: "",
-                        sender_localpart: "_bot_",
-                        namespaces: {
-                            users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                            rooms: [],
-                            aliases: [],
-                        },
-                    },
-                });
-
-                expect(appservice.getAliasLocalpartForSuffix("testing")).toEqual("_prefix_testing");
-                throw new Error("Did not throw when expecting it");
-            } catch (e) {
-                expect(e.message).toEqual("Invalid configured alias prefix");
-            }
-        });
-
-        it('should return an alias localpart for any namespaced suffix', async () => {
-            const appservice = new Appservice({
-                port: 0,
-                bindAddress: '',
-                homeserverName: 'example.org',
-                homeserverUrl: 'https://localhost',
-                registration: {
-                    as_token: "",
-                    hs_token: "",
-                    sender_localpart: "_bot_",
-                    namespaces: {
-                        users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                        rooms: [],
-                        aliases: [{ exclusive: true, regex: "#_prefix_.*:.+" }],
-                    },
-                },
-            });
-
-            expect(appservice.getAliasLocalpartForSuffix("testing")).toEqual("_prefix_testing");
-        });
-    });
-
-    describe('getSuffixForAlias', () => {
-        it('should throw on no alias prefix set', async () => {
-            try {
-                const appservice = new Appservice({
-                    port: 0,
-                    bindAddress: '',
-                    homeserverName: 'example.org',
-                    homeserverUrl: 'https://localhost',
-                    registration: {
-                        as_token: "",
-                        hs_token: "",
-                        sender_localpart: "_bot_",
-                        namespaces: {
-                            users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                            rooms: [],
-                            aliases: [],
-                        },
-                    },
-                });
-
-                const suffix = "testing";
-                const userId = `#_prefix_${suffix}:example.org`;
-
-                expect(appservice.getSuffixForAlias(userId)).toBe(suffix);
-                throw new Error("Did not throw when expecting it");
-            } catch (e) {
-                expect(e.message).toEqual("Invalid configured alias prefix");
-            }
-        });
-
-        it('should return a suffix for any namespaced alias', async () => {
-            const appservice = new Appservice({
-                port: 0,
-                bindAddress: '',
-                homeserverName: 'example.org',
-                homeserverUrl: 'https://localhost',
-                registration: {
-                    as_token: "",
-                    hs_token: "",
-                    sender_localpart: "_bot_",
-                    namespaces: {
-                        users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                        rooms: [],
-                        aliases: [{ exclusive: true, regex: "#_prefix_.*:.+" }],
-                    },
-                },
-            });
-
-            const suffix = "testing";
-            const userId = `#_prefix_${suffix}:example.org`;
-
-            expect(appservice.getSuffixForAlias(userId)).toBe(suffix);
-        });
-
-        it('should return a falsey suffix for any non-namespaced alias', async () => {
-            const appservice = new Appservice({
-                port: 0,
-                bindAddress: '',
-                homeserverName: 'example.org',
-                homeserverUrl: 'https://localhost',
-                registration: {
-                    as_token: "",
-                    hs_token: "",
-                    sender_localpart: "_bot_",
-                    namespaces: {
-                        users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
-                        rooms: [],
-                        aliases: [{ exclusive: true, regex: "#_prefix_.*:.+" }],
-                    },
-                },
-            });
-
-            expect(appservice.getSuffixForAlias(null)).toBeFalsy();
-            expect(appservice.getSuffixForAlias(undefined)).toBeFalsy();
-            expect(appservice.getSuffixForAlias("")).toBeFalsy();
-            expect(appservice.getSuffixForAlias("#invalid")).toBeFalsy();
-            expect(appservice.getSuffixForAlias("#_prefix_invalid")).toBeFalsy();
-            expect(appservice.getSuffixForAlias("#_prefix_testing:invalid.example.org")).toBeFalsy();
-            expect(appservice.getSuffixForAlias("#_invalid_testing:example.org")).toBeFalsy();
-        });
     });
 
     it('should return 404 error codes for unknown endpoints', async () => {
@@ -796,6 +754,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -845,6 +804,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -854,7 +814,6 @@ describe('Appservice', () => {
         await appservice.begin();
 
         try {
-            // eslint-disable-next-line no-inner-declarations
             async function verifyAuth(method: string, route: string) {
                 async function doCall(opts: any = {}) {
                     try {
@@ -917,6 +876,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -978,6 +938,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -987,7 +948,6 @@ describe('Appservice', () => {
         await appservice.begin();
 
         try {
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}, err: any) {
                 try {
                     await requestPromise({
@@ -1035,6 +995,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -1063,7 +1024,6 @@ describe('Appservice', () => {
             appservice.on("room.event", eventSpy);
             appservice.on("room.message", messageSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1103,6 +1063,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
                 // "de.sorunome.msc2409.push_ephemeral": true, // Shouldn't affect emission
             },
         });
@@ -1130,7 +1091,6 @@ describe('Appservice', () => {
             });
             appservice.on("ephemeral.event", eventSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1168,6 +1128,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
                 // "de.sorunome.msc2409.push_ephemeral": true, // Shouldn't affect emission
             },
         });
@@ -1206,7 +1167,6 @@ describe('Appservice', () => {
             appservice.on("room.encrypted_event", encryptedEventSpy);
 
             let txnId = 1;
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, spyCallback: () => void) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}${txnId++}`,
@@ -1223,7 +1183,6 @@ describe('Appservice', () => {
                 encryptedEventSpy.callCount = 0;
             }
 
-            // eslint-disable-next-line no-inner-declarations
             async function checkBothPaths(spyCallback: () => void) {
                 await doCall("/transactions/", spyCallback);
                 await doCall("/_matrix/app/v1/transactions/", spyCallback);
@@ -1378,6 +1337,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -1406,7 +1366,6 @@ describe('Appservice', () => {
             appservice.on("room.event", eventSpy);
             appservice.on("room.message", messageSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1444,6 +1403,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -1482,7 +1442,6 @@ describe('Appservice', () => {
             appservice.on("room.event", eventSpy);
             appservice.on("room.message", messageSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1524,6 +1483,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                "url": null,
                 "de.sorunome.msc2409.push_ephemeral": true,
             },
         });
@@ -1558,7 +1518,6 @@ describe('Appservice', () => {
             });
             appservice.on("ephemeral.event", eventSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1598,6 +1557,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -1655,7 +1615,6 @@ describe('Appservice', () => {
             appservice.on("room.event", eventSpy);
             appservice.on("room.message", messageSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1699,6 +1658,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                "url": null,
                 "de.sorunome.msc2409.push_ephemeral": true,
             },
         });
@@ -1744,7 +1704,6 @@ describe('Appservice', () => {
             });
             appservice.on("ephemeral.event", eventSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1786,6 +1745,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -1873,7 +1833,6 @@ describe('Appservice', () => {
             appservice.on("room.leave", leaveSpy);
             appservice.on("room.invite", inviteSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -1898,6 +1857,98 @@ describe('Appservice', () => {
         }
     });
 
+    it('should refresh membership information of intents when actions are performed against them', async () => {
+        const port = await getPort();
+        const hsToken = "s3cret_token";
+        const appservice = new Appservice({
+            port: port,
+            bindAddress: '',
+            homeserverName: 'example.org',
+            homeserverUrl: 'https://localhost',
+            registration: {
+                as_token: "",
+                hs_token: hsToken,
+                sender_localpart: "_bot_",
+                namespaces: {
+                    users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
+                    rooms: [],
+                    aliases: [],
+                },
+                url: null,
+            },
+        });
+        appservice.botIntent.ensureRegistered = () => {
+            return null;
+        };
+
+        await appservice.begin();
+
+        try {
+            const intent = appservice.getIntentForSuffix("test");
+            const refreshSpy = simple.stub().callFn(() => Promise.resolve([]));
+            intent.refreshJoinedRooms = refreshSpy;
+
+            // polyfill the dummy user too
+            const intent2 = appservice.getIntentForSuffix("test___WRONGUSER");
+            intent2.refreshJoinedRooms = () => Promise.resolve([]);
+
+            const joinTxn = {
+                events: [
+                    {
+                        type: "m.room.member",
+                        room_id: "!AAA:example.org",
+                        content: { membership: "join" },
+                        state_key: "@_prefix_test:example.org",
+                        sender: "@_prefix_test:example.org",
+                    },
+                    {
+                        type: "m.room.member",
+                        room_id: "!AAA:example.org",
+                        content: { membership: "join" },
+                        state_key: "@_prefix_test___WRONGUSER:example.org",
+                        sender: "@_prefix_test:example.org",
+                    },
+                ],
+            };
+            const kickTxn = {
+                events: [
+                    {
+                        type: "m.room.member",
+                        room_id: "!AAA:example.org",
+                        content: { membership: "leave" },
+                        state_key: "@_prefix_test:example.org",
+                        sender: "@someone_else:example.org",
+                    },
+                    {
+                        type: "m.room.member",
+                        room_id: "!AAA:example.org",
+                        content: { membership: "leave" },
+                        state_key: "@_prefix_test___WRONGUSER:example.org",
+                        sender: "@someone_else:example.org",
+                    },
+                ],
+            };
+
+            async function doCall(route: string, opts: any = {}) {
+                const res = await requestPromise({
+                    uri: `http://localhost:${port}${route}`,
+                    method: "PUT",
+                    qs: { access_token: hsToken },
+                    ...opts,
+                });
+                expect(res).toMatchObject({});
+
+                expect(refreshSpy.callCount).toBe(1);
+                refreshSpy.callCount = 0;
+            }
+
+            await doCall("/transactions/1", { json: joinTxn });
+            await doCall("/_matrix/app/v1/transactions/2", { json: kickTxn });
+        } finally {
+            appservice.stop();
+        }
+    });
+
     it('should handle room upgrade events in transactions', async () => {
         const port = await getPort();
         const hsToken = "s3cret_token";
@@ -1915,6 +1966,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -1963,7 +2015,6 @@ describe('Appservice', () => {
             appservice.on("room.upgraded", upgradeSpy);
             appservice.on("room.event", eventSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -2005,6 +2056,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2069,6 +2121,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2134,6 +2187,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2180,6 +2234,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2242,6 +2297,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2287,6 +2343,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2317,7 +2374,6 @@ describe('Appservice', () => {
 
             appservice.on("query.user", userSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -2361,6 +2417,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2394,7 +2451,6 @@ describe('Appservice', () => {
 
             appservice.on("query.user", userSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 http.when("PUT", "/_matrix/client/v3/profile").respond(200, (path, content) => {
                     expect(path).toEqual(`${hsUrl}/_matrix/client/v3/profile/${encodeURIComponent(userId)}/displayname`);
@@ -2445,6 +2501,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2478,7 +2535,6 @@ describe('Appservice', () => {
 
             appservice.on("query.user", userSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 http.when("PUT", "/_matrix/client/v3/profile").respond(200, (path, content) => {
                     expect(path).toEqual(`${hsUrl}/_matrix/client/v3/profile/${encodeURIComponent(userId)}/displayname`);
@@ -2528,6 +2584,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2558,7 +2615,6 @@ describe('Appservice', () => {
 
             appservice.on("query.user", userSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 try {
                     await requestPromise({
@@ -2611,6 +2667,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2641,7 +2698,6 @@ describe('Appservice', () => {
 
             appservice.on("query.user", userSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 try {
                     await requestPromise({
@@ -2694,6 +2750,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2724,7 +2781,6 @@ describe('Appservice', () => {
 
             appservice.on("query.room", roomSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -2765,6 +2821,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2795,7 +2852,6 @@ describe('Appservice', () => {
 
             appservice.on("query.room", roomSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -2836,6 +2892,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2866,7 +2923,6 @@ describe('Appservice', () => {
 
             appservice.on("query.room", roomSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 const res = await requestPromise({
                     uri: `http://localhost:${port}${route}`,
@@ -2907,6 +2963,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -2932,7 +2989,6 @@ describe('Appservice', () => {
 
             appservice.on("query.room", roomSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 try {
                     await requestPromise({
@@ -2983,6 +3039,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -3008,7 +3065,6 @@ describe('Appservice', () => {
 
             appservice.on("query.room", roomSpy);
 
-            // eslint-disable-next-line no-inner-declarations
             async function doCall(route: string, opts: any = {}) {
                 try {
                     await requestPromise({
@@ -3340,6 +3396,7 @@ describe('Appservice', () => {
                     rooms: [],
                     aliases: [],
                 },
+                url: null,
             },
         });
         appservice.botIntent.ensureRegistered = () => {
@@ -3359,5 +3416,70 @@ describe('Appservice', () => {
             appservice.setRoomDirectoryVisibility("foonetwork", "!aroomid:example.org", "public"),
             http.flushAllExpected(),
         ]);
+    });
+    it("should handle a ping request", async () => {
+        const port = await getPort();
+        const hsToken = "s3cret_token";
+        const hsUrl = "https://localhost";
+        const asId = 'my-id';
+        const appservice = new Appservice({
+            port: port,
+            bindAddress: '',
+            homeserverName: 'example.org',
+            homeserverUrl: hsUrl,
+            registration: {
+                id: asId,
+                as_token: "",
+                hs_token: hsToken,
+                sender_localpart: "_bot_",
+                namespaces: {
+                    users: [{ exclusive: true, regex: "@_prefix_.*:.+" }],
+                    rooms: [],
+                    aliases: [],
+                },
+                url: null,
+            },
+        });
+
+        appservice.botIntent.ensureRegistered = () => {
+            return null;
+        };
+
+        const http = new HttpBackend();
+        setRequestFn(http.requestFn);
+
+        // AS -> HS
+        let txnId;
+        http.when("POST", `/_matrix/client/v1/appservice/${asId}/ping`).respond(200, (_path, content) => {
+            expect(content.transaction_id).toBeDefined();
+            txnId = content.transaction_id;
+            // Note. We can't do an async thing here so instead we return immediately.
+            return {
+                duration_ms: 100,
+            };
+        });
+
+        await Promise.all([
+            appservice.pingHomeserver(),
+            http.flushAllExpected(),
+        ]);
+        await appservice.begin();
+
+        // Mock the HS -> AS route.
+        try {
+            const req = await fetch(
+                `http://localhost:${port}/_matrix/app/v1/ping`, {
+                    method: 'POST',
+                    body: JSON.stringify({ transaction_id: txnId }),
+                    headers: {
+                        "Authorization": `Bearer ${hsToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
+            expect(await req.json()).toEqual({});
+            expect(req.status).toBe(200);
+        } finally {
+            appservice.stop();
+        }
     });
 });

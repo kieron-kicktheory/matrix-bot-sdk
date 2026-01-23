@@ -13,8 +13,9 @@ export interface PreviousRoomInfo {
 
     /**
      * The last known event ID in the old room.
+     * Optional only for room versions >=12.
      */
-    event_id: string;
+    event_id?: string;
 }
 
 /**
@@ -62,7 +63,7 @@ export class CreateEvent extends StateEvent<CreateEventContent> {
      * The user ID who created the room.
      */
     public get creator(): string {
-        return this.content.creator || this.sender;
+        return this.sender;
     }
 
     /**

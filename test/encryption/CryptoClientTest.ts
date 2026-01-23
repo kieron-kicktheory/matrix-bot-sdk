@@ -125,6 +125,32 @@ describe('CryptoClient', () => {
 
             expect(toDeviceSpy.callCount).toBe(1);
         }));
+
+        it('should expose the device Ed25519 identity', () => testCryptoStores(async (cryptoStoreType) => {
+            const userId = "@alice:example.org";
+            const { client, http } = createTestClient(null, userId, cryptoStoreType);
+
+            await client.cryptoStore.setDeviceId(TEST_DEVICE_ID);
+            bindNullEngine(http);
+            await Promise.all([
+                client.crypto.prepare(),
+                http.flushAllExpected(),
+            ]);
+            expect(client.crypto.clientDeviceEd25519).toBeTruthy();
+        }));
+
+        it('should expose the device Ed25519 identity', () => testCryptoStores(async (cryptoStoreType) => {
+            const userId = "@alice:example.org";
+            const { client, http } = createTestClient(null, userId, cryptoStoreType);
+
+            await client.cryptoStore.setDeviceId(TEST_DEVICE_ID);
+            bindNullEngine(http);
+            await Promise.all([
+                client.crypto.prepare(),
+                http.flushAllExpected(),
+            ]);
+            expect(client.crypto.clientDeviceEd25519).toBeTruthy();
+        }));
     });
 
     describe('isRoomEncrypted', () => {
@@ -150,7 +176,7 @@ describe('CryptoClient', () => {
             const { client, http } = createTestClient(null, userId, cryptoStoreType);
 
             await client.cryptoStore.setDeviceId(TEST_DEVICE_ID);
-            client.getRoomStateEvent = () => Promise.reject(new Error("not used"));
+            client.getRoomStateEventContent = () => Promise.reject(new Error("not used"));
 
             bindNullEngine(http);
             await Promise.all([
@@ -167,7 +193,7 @@ describe('CryptoClient', () => {
             const { client, http } = createTestClient(null, userId, cryptoStoreType);
 
             await client.cryptoStore.setDeviceId(TEST_DEVICE_ID);
-            client.getRoomStateEvent = () => Promise.reject(new Error("implied 404"));
+            client.getRoomStateEventContent = () => Promise.reject(new Error("implied 404"));
 
             bindNullEngine(http);
             await Promise.all([
@@ -184,7 +210,7 @@ describe('CryptoClient', () => {
             const { client, http } = createTestClient(null, userId, cryptoStoreType);
 
             await client.cryptoStore.setDeviceId(TEST_DEVICE_ID);
-            client.getRoomStateEvent = () => Promise.resolve({});
+            client.getRoomStateEventContent = () => Promise.resolve({});
 
             bindNullEngine(http);
             await Promise.all([
@@ -201,7 +227,7 @@ describe('CryptoClient', () => {
             const { client, http } = createTestClient(null, userId, cryptoStoreType);
 
             await client.cryptoStore.setDeviceId(TEST_DEVICE_ID);
-            client.getRoomStateEvent = () => Promise.resolve({ algorithm: RoomEncryptionAlgorithm.MegolmV1AesSha2 });
+            client.getRoomStateEventContent = () => Promise.resolve({ algorithm: RoomEncryptionAlgorithm.MegolmV1AesSha2 });
 
             bindNullEngine(http);
             await Promise.all([
