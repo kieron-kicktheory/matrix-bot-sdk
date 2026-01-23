@@ -109,105 +109,117 @@ export class Intent {
     @timedIntentFunctionCall()
     public async enableEncryption(providedDeviceId?: string): Promise<void> {
         if (!this.cryptoSetupPromise) {
-            // eslint-disable-next-line no-async-promise-executor
-            this.cryptoSetupPromise = new Promise(async (resolve, reject) => {
-                try {
-                    // Prepare a client first
-                    await this.ensureRegistered();
-                    const storage = this.storage?.storageForUser?.(this.userId);
-                    this.client.impersonateUserId(this.userId); // make sure the devices call works
+            this.cryptoSetupPromise = (async () => {
+                // Prepare a client first
+                await this.ensureRegistered();
+                const storage = this.storage?.storageForUser?.(this.userId);
 
-                    const cryptoStore = this.cryptoStorage?.storageForUser(this.userId);
-                    if (!cryptoStore) {
-                        // noinspection ExceptionCaughtLocallyJS
-                        throw new Error("Failed to create crypto store");
-                    }
+                // This makes sure the current client isn't impersonating a
+                // non-existing device before we try to do a call
+                this.client.impersonateUserId(this.userId); 
 
-                    let deviceId = await cryptoStore.getDeviceId();
-                    if (!providedDeviceId) {
-                        // Try to impersonate a device ID
-                        const ownDevices = await this.client.getOwnDevices();
-                        let deviceId = await cryptoStore.getDeviceId();
-                        if (!deviceId || !ownDevices.some(d => d.device_id === deviceId)) {
-                            const deviceKeys = await this.client.getUserDevices([this.userId]);
-                            const userDeviceKeys = deviceKeys.device_keys[this.userId];
-                            if (userDeviceKeys) {
-                                // We really should be validating signatures here, but we're actively looking
-                                // for devices without keys to impersonate, so it should be fine. In theory,
-                                // those devices won't even be present but we're cautious.
-                                const devicesWithKeys = Array.from(Object.entries(userDeviceKeys))
-                                    .filter(d => d[0] === d[1].device_id && !!d[1].keys?.[`${DeviceKeyAlgorithm.Curve25519}:${d[1].device_id}`])
-                                    .map(t => t[0]); // grab device ID from tuple
-                                deviceId = ownDevices.find(d => !devicesWithKeys.includes(d.device_id))?.device_id;
-                            }
-                        }
-                    } else {
-                        if (deviceId && deviceId !== providedDeviceId) {
-                            LogService.warn("Intent", `Storage already configured with an existing device ${deviceId}. Old storage will be cleared.`);
-                        }
-                        deviceId = providedDeviceId;
-                    }
-                    let prepared = false;
-
-                    if (deviceId) {
-                        const cryptoStore = this.cryptoStorage?.storageForUser(this.userId);
-                        const existingDeviceId = await cryptoStore.getDeviceId();
-                        if (existingDeviceId && existingDeviceId !== deviceId) {
-                            LogService.warn("Intent", `Device ID has changed for user ${this.userId} from ${existingDeviceId} to ${deviceId}`);
-                        }
-                        this.makeClient(true);
-                        this.client.impersonateUserId(this.userId, deviceId);
-
-                        // verify that the server supports impersonating the device
-                        const respDeviceId = (await this.client.getWhoAmI()).device_id;
-                        prepared = (respDeviceId === deviceId);
-                    }
-
-                    if (!prepared) {
-                        let accessToken;
-                        if (this.options.registration["io.element.msc4190"]) {
-                            // Generate a random device ID and create it
-                            deviceId = randomUUID();
-                            // Make sure the device is registered
-                            await this.client.doRequest("PUT", `/_matrix/client/v3/devices/${deviceId}`, null, {});
-                            this.makeClient(true);
-                            this.client.impersonateUserId(this.userId, deviceId);
-                            prepared = true;
-                        } else if (!(accessToken = await Promise.resolve(storage?.readValue("accessToken")))) {
-                            // XXX: We work around servers that don't support device_id impersonation
-                            const loginBody = {
-                                type: "m.login.application_service",
-                                identifier: {
-                                    type: "m.id.user",
-                                    user: this.userId,
-                                },
-                            };
-                            const res = await this.client.doRequest("POST", "/_matrix/client/v3/login", {}, loginBody);
-                            this.makeClient(true, res['access_token']);
-                            storage.storeValue("accessToken", this.client.accessToken);
-                            prepared = true;
-                        } else {
-                            this.makeClient(true, accessToken);
-                            prepared = true;
-                        }
-                    }
-
-                    if (!prepared) {// noinspection ExceptionCaughtLocallyJS
-                        throw new Error("Unable to establish a device ID");
-                    }
-
-                    // Now set up crypto
-                    await this.client.crypto.prepare();
-
-                    this.appservice.on("room.event", (roomId, event) => {
-                        this.client.crypto.onRoomEvent(roomId, event);
-                    });
-
-                    resolve();
-                } catch (e) {
-                    reject(e);
+                const cryptoStore = this.cryptoStorage?.storageForUser(this.userId);
+                if (!cryptoStore) {
+                    // noinspection ExceptionCaughtLocallyJS
+                    throw new Error("Failed to create crypto store");
                 }
-            });
+
+                // XXX: `getDeviceId` is a terrible API as it might return
+                // an empty string instead of null. We replace it with null.
+                let deviceId: string | null = await cryptoStore.getDeviceId() || null;
+
+                // If we got an explicit device provided as parameter, use that
+                if (providedDeviceId) {
+                  if (deviceId && deviceId !== providedDeviceId) {
+                      LogService.warn("Intent", `Storage already configured with an existing device ${deviceId}. Old storage will be cleared.`);
+                  }
+                  deviceId = providedDeviceId;
+                }
+
+                // If we don't have a device, look at existing devices that
+                // *don't* yet have keys uploaded and try to adopt one
+                if (!deviceId) {
+                  const ownDevices = await this.client.getOwnDevices();
+                  const deviceKeys = await this.client.getUserDevices([this.userId]);
+                  const userDeviceKeys = deviceKeys.device_keys[this.userId];
+                  if (userDeviceKeys) {
+                      // We really should be validating signatures here, but we're actively looking
+                      // for devices without keys to impersonate, so it should be fine. In theory,
+                      // those devices won't even be present but we're cautious.
+                      const devicesWithKeys = Array.from(Object.entries(userDeviceKeys))
+                          .filter(d => d[0] === d[1].device_id && !!d[1].keys?.[`${DeviceKeyAlgorithm.Curve25519}:${d[1].device_id}`])
+                          .map(t => t[0]); // grab device ID from tuple
+                      deviceId = ownDevices.find(d => !devicesWithKeys.includes(d.device_id))?.device_id;
+                  }
+                }
+
+                // If we still don't have a device ID, generate a random one
+                if (!deviceId) {
+                  deviceId = randomUUID();
+                }
+
+                try {
+                  // Make sure the device is registered. Before Matrix C-S 1.17, this would fail if the device doesn't exist.
+                  // After 1.17 (or if `io.element.msc4190` is set in the registration file for Synapse 1.121+), it creates the device on the fly
+                  await this.client.doRequest("PUT", `/_matrix/client/v3/devices/${deviceId}`, null, {});
+                } catch {
+                  deviceId = null;
+                }
+
+                if (deviceId) {
+                    // Check that we can impersonate the device ID
+                    this.client.impersonateUserId(this.userId, deviceId);
+                    const respDeviceId = (await this.client.getWhoAmI()).device_id;
+                    if (respDeviceId !== deviceId) {
+                      deviceId = null;
+                    }
+                }
+
+                // Last resort if we don't have a device ID: have a per-user
+                // access token, and do an appservice login if that fails
+                let accessToken: string | undefined;
+                if (!deviceId) {
+                    // Check if we have an existing access token and test it
+                    accessToken = await storage?.readValue("accessToken") || undefined;
+                    if (accessToken) {
+                        this.makeClient(false, accessToken);
+                        try {
+                            // Check that we can use the existing token
+                            await this.client.getWhoAmI();
+                        } catch {
+                            accessToken = undefined;
+                        }
+                    }
+
+                    // If the existing access token was not working or absent,
+                    // do an appservice login as a last resort
+                    if (!accessToken) {
+                        // Reset the MatrixClient
+                        this.makeClient(false);
+                        const loginBody = {
+                            type: "m.login.application_service",
+                            identifier: {
+                                type: "m.id.user",
+                                user: this.userId,
+                            },
+                        };
+                        const res = await this.client.doRequest("POST", "/_matrix/client/v3/login", {}, loginBody);
+                        accessToken = res['access_token'];
+                        deviceId = res['device_id'];
+                        await storage.storeValue("accessToken", this.client.accessToken);
+                    }
+                }
+
+                this.makeClient(true, accessToken);
+                this.client.impersonateUserId(this.userId, deviceId);
+
+                // Now set up crypto
+                await this.client.crypto.prepare();
+
+                this.appservice.on("room.event", (roomId, event) => {
+                    this.client.crypto.onRoomEvent(roomId, event);
+                });
+            })();
         }
         return this.cryptoSetupPromise;
     }
