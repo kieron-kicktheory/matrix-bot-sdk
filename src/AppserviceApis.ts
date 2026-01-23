@@ -11,7 +11,7 @@ export class AppserviceApis {
     /**
      *
      * @param client A client with the appservice token configured.
-     * @param appserviceId The `id` of the appservice, as per it's registration file.
+     * @param appserviceId The `id` of the appservice, as per its registration file.
      */
     constructor(private readonly client: MatrixClient, private readonly appserviceId?: string) { }
 
