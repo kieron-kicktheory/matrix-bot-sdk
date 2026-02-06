@@ -336,6 +336,21 @@ export class CryptoClient {
         this.client.removeListener("to_device.decrypted", this.onToDeviceMessage);
     }
 
+    /**
+     * Request verification of the bot's own user/device.
+     *
+     * Note: The Rust SDK crypto bindings do not currently support interactive
+     * verification (SAS/QR). This stub is provided for compatibility with callers
+     * that expect this method (e.g. OpenClaw Matrix plugin). It logs a warning
+     * and returns null instead of throwing.
+     *
+     * @returns {Promise<null>} Always resolves to null.
+     */
+    public async requestOwnUserVerification(): Promise<null> {
+        LogService.warn("CryptoClient", "requestOwnUserVerification is not supported by the Rust SDK crypto bindings — skipping self-verification. Device will function but may appear unverified to other clients. Consider cross-signing the device via another client or the Admin API.");
+        return null;
+    }
+
     private readonly onToDeviceMessage = (msg: IToDeviceMessage): void => {
         if (msg.type === "m.room_key") {
             this.engine.backupRoomKeys();

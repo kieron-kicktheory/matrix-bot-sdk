@@ -962,6 +962,60 @@ export class MatrixClient extends EventEmitter {
     }
 
     /**
+     * Gets room message history with optional decryption for encrypted rooms.
+     * @param {string} roomId The room ID to get messages from.
+     * @param {object} opts Options for the request.
+     * @param {number} opts.limit Maximum number of events to return. Default 20.
+     * @param {string} opts.from Pagination token to start from.
+     * @param {string} opts.dir Direction: "b" for backwards (default), "f" for forwards.
+     * @param {string} opts.filter Optional JSON-encoded filter string.
+     * @returns {Promise<{chunk: any[], start?: string, end?: string}>} Resolves to paginated events
+     *   with decrypted content where possible.
+     */
+    @timedMatrixClientFunctionCall()
+    public async getRoomMessages(
+        roomId: string,
+        opts: { limit?: number; from?: string; dir?: "b" | "f"; filter?: string } = {},
+    ): Promise<{ chunk: any[]; start?: string; end?: string }> {
+        const qs: Record<string, any> = {
+            dir: opts.dir || "b",
+            limit: opts.limit ?? 20,
+        };
+        if (opts.from) qs.from = opts.from;
+        if (opts.filter) qs.filter = opts.filter;
+
+        const res = await this.doRequest(
+            "GET",
+            `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages`,
+            qs,
+        ) as { chunk: any[]; start?: string; end?: string };
+
+        const isEncrypted = await this.crypto?.isRoomEncrypted(roomId);
+        if (isEncrypted && this.crypto) {
+            const decryptedChunk: any[] = [];
+            for (const event of res.chunk) {
+                if (event.type === "m.room.encrypted") {
+                    try {
+                        const decrypted = await this.crypto.decryptRoomEvent(
+                            new EncryptedRoomEvent(event),
+                            roomId,
+                        );
+                        decryptedChunk.push(decrypted.raw);
+                    } catch {
+                        // Can't decrypt (missing keys, etc.) — return as-is
+                        decryptedChunk.push(event);
+                    }
+                } else {
+                    decryptedChunk.push(event);
+                }
+            }
+            return { ...res, chunk: decryptedChunk };
+        }
+
+        return res;
+    }
+
+    /**
      * Gets an event for a room. Returned as a raw event.
      * @param {string} roomId the room ID to get the event in
      * @param {string} eventId the event ID to look up
@@ -1466,7 +1520,12 @@ export class MatrixClient extends EventEmitter {
      */
     @timedMatrixClientFunctionCall()
     public async sendEvent(roomId: string, eventType: string, content: any): Promise<string> {
-        if (await this.crypto?.isRoomEncrypted(roomId)) {
+        // Reactions (m.reaction) should not be encrypted per Matrix spec:
+        // - Reactions use m.annotation relations which must be visible to the server
+        // - Encrypting reactions causes display issues in clients (e.g. Cinny)
+        // See: https://github.com/matrix-org/matrix-spec-proposals/issues/2905
+        const shouldEncrypt = eventType !== "m.reaction";
+        if (shouldEncrypt && await this.crypto?.isRoomEncrypted(roomId)) {
             content = await this.crypto.encryptRoomEvent(roomId, eventType, content);
             eventType = "m.room.encrypted";
         }
